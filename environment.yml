@@ -1,0 +1,20 @@
+# AutoThu 专用 conda 环境
+# 创建: conda env create -f environment.yml
+# 激活: conda activate autothu
+name: autothu
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - thulearn2018>=2.4.9
+      - pdfplumber>=0.11.0
+      - pymupdf>=1.24.0
+      - markdown>=3.5
+      - requests>=2.31.0
+      - beautifulsoup4>=4.12.0
+      - gmssl>=3.2.0
+      # 浏览器登录（可选，用于首次获取 session.json）
+      # - selenium>=4.15.0

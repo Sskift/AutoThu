@@ -1,0 +1,19 @@
+# 凭据与会话（切勿提交）
+.config/
+session*.json
+*.fingerprint_*.json
+.fingerprint_*.json
+
+# 工作目录
+test/
+work/
+download/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 系统
+.DS_Store
+Thumbs.db

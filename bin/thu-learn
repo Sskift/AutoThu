@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# AutoThu CLI 入口：自动激活 conda 环境 autothu
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+if command -v conda &>/dev/null; then
+  # shellcheck source=/dev/null
+  source "$(conda info --base)/etc/profile.d/conda.sh"
+  conda activate autothu 2>/dev/null || true
+fi
+
+exec python "$ROOT/scripts/thu_learn_cli.py" "$@"
