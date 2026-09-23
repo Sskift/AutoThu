@@ -19,7 +19,7 @@ else
 fi
 
 conda activate autothu
-pip install -U thulearn2018 pdfplumber pymupdf markdown requests gmssl 2>/dev/null || true
+pip install -U thulearn2018 pdfplumber pymupdf markdown requests gmssl cryptography selenium 2>/dev/null || true
 
 mkdir -p "$HOME/.config/autothu"
 if [[ ! -f "$HOME/.config/autothu/session.json" ]]; then

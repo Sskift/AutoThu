@@ -46,13 +46,15 @@ thu-learn --help
 
 ---
 
-## 二、登录（必做，WSL + Windows Edge）
+## 二、登录（必做）
 
 清华已关闭 thulearn2018 的旧版 `login/post` 接口，**不能**再使用 `learn download` 等自带登录。请用 AutoThu 登录流程导出 `session.json`。
 
 ### 2.1 一键登录（推荐）
 
-在 WSL 中执行（会弹出 **Windows Edge**；双因素/验证码在窗口内手动完成）：
+macOS：运行 `thu-learn login`。命令会尝试导入当前 Chrome 会话；若 Chrome 的本地 Cookie 无法导入，则打开独立 Chrome 窗口，请在窗口中完成 SSO 与双因素验证。成功后会验证会话，并以仅当前用户可读写的权限保存。
+
+Windows/WSL：在 WSL 中执行（会弹出 **Windows Edge**；双因素/验证码在窗口内手动完成）：
 
 ```bash
 conda activate autothu
@@ -120,7 +122,7 @@ thu-learn --session /path/to/session.json --work-dir ./my_test <子命令>
 
 | 命令 | 作用 | 说明 |
 |------|------|------|
-| `thu-learn login` | Edge 登录并导出 session | 仅 WSL+Windows |
+| `thu-learn login` | 登录并导出 session | macOS 使用 Chrome；WSL 使用 Windows Edge |
 | `thu-learn verify` | 验证 session / 列出课程 | 推荐每次登录后执行 |
 | `thu-learn config` | 显示 session、工作目录路径 | |
 | `thu-learn courses` | 列出当前学期课程 | `-s 2025-2026-2` 指定学期 |
@@ -244,6 +246,7 @@ conda activate autothu，执行 AutoThu/skill.md
 | `scripts/verify_learn.py` | 验证 session / 打印 API 端点 |
 | `scripts/edge_login_winhost.py` | Windows 侧 Edge CDP 登录 |
 | `scripts/run_edge_login.ps1` | 启动 Edge + 登录（Windows） |
+| `scripts/mac_login.py` | Chrome 会话导入或独立浏览器登录（macOS） |
 | `scripts/probe_login.py` | SSO 登录链探测 |
 
 ---
@@ -285,7 +288,7 @@ AutoThu/
 |------|------|
 | 平台 | https://learn.tsinghua.edu.cn |
 | 旧 SSO POST | 已禁用 |
-| 登录 | Windows Edge + CDP → `session.json` |
+| 登录 | macOS Chrome 或 Windows Edge → `session.json` |
 | API | 与 [thulearn2018](https://github.com/euxcet/thulearn2018) 一致，需 `XSRF-TOKEN` + `JSESSIONID` |
 | WSL 访问 Edge CDP | 不可直连 `127.0.0.1:9222`，须 Windows Python 控制 |
 

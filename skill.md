@@ -7,9 +7,9 @@ description: AutoThu - 自动同步清华网络学堂通知、完成作业、撰
 
 自动处理清华大学网络学堂（https://learn.tsinghua.edu.cn）相关任务。
 
-## Conda 环境（必须）
+## 环境准备
 
-所有 Python / `learn` 命令在 **conda 环境 `autothu`** 中执行：
+Linux/WSL 使用 Conda 环境 `autothu`；macOS 也可直接使用仓库 `.venv`（`bin/thu-learn` 会自动选择）。
 
 ```bash
 cd AutoThu
@@ -23,6 +23,8 @@ conda activate autothu
 python scripts/verify_learn.py --doc-only
 python scripts/verify_learn.py --session ~/.config/autothu/session.json
 ```
+
+**macOS 登录**：运行 `thu-learn login`。命令会导入 Chrome 会话；无法导入时会打开独立 Chrome 登录窗口，手动完成认证后写入 session。
 
 **WSL + Windows Edge 登录**（导出 session）：
 

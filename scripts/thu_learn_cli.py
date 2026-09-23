@@ -70,6 +70,12 @@ def cli(ctx: click.Context, session: Path, work_dir: Path) -> None:
     help="run_edge_login.ps1 路径",
 )
 def login(ps1: Path | None) -> None:
+    if sys.platform == "darwin":
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "mac_login.py")], cwd=str(ROOT)
+        )
+        sys.exit(result.returncode)
+
     candidates = [
         ps1,
         Path("/mnt/c/Users/lenovo/autoTHU/run_edge_login.ps1"),

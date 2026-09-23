@@ -17,3 +17,7 @@ __pycache__/
 # 系统
 .DS_Store
 Thumbs.db
+
+# Local AutoThu configuration and downloads
+local/
+data/
