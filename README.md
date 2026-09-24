@@ -324,3 +324,21 @@ A: `scripts/edge_login_winhost.py`，Windows 副本 `C:\Users\lenovo\autoTHU\run
 ## License
 
 MIT
+
+## macOS 会话保活
+
+`thu-learn login` 会优先导入当前 Chrome 的网络学堂登录态；`thu-learn login --import-only` 只尝试导入，不打开独立登录窗口。支持现代 Chromium v24 Cookie 域名校验。
+
+```sh
+thu-learn verify
+thu-learn keepalive                          # 验证一次并持久化更新的 Cookie
+thu-learn keepalive --install --recover-chrome # 每 15 分钟执行，过期时尝试 Chrome
+thu-learn keepalive --status
+thu-learn keepalive --remove
+```
+
+后台服务使用 `~/.local/share/autothu/`，会话推荐放在 `~/.config/autothu/session.json`（默认路径），避免 macOS Documents 后台访问限制。可用 `--interval 900` 调整频率，允许 300–3600 秒。CLI 的 `--session` 参数同样适用于 login 和 keepalive。
+
+认证接口验证成功后才保存 Cookie；通过文件锁、原子替换及版本检查，避免并发进程覆盖新登录态。网络错误与登录过期分别记录，原凭据不会因失败请求被覆盖。Chrome 恢复失败最多每小时重试一次，不调用后台浏览器登录。学校的强制过期或重新认证要求仍需本人登录，保活无法保证永久有效；电脑休眠时保活暂停，唤醒后恢复。
+
+验证：`python -m unittest discover -s tests -v`。测试使用合成 Cookie 和模拟认证接口，不需要真实账号。

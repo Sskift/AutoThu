@@ -27,7 +27,7 @@ ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from thulearn_bridge import DEFAULT_SESSION, DEFAULT_WORK, ensure_semester, load_learn_from_session
-from thu_learn_client import ThuLearnClient
+from thu_learn_client import ThuLearnClient, SessionExpired
 
 
 def _align(string: str, length: int = 0) -> str:
@@ -62,17 +62,21 @@ def cli(ctx: click.Context, session: Path, work_dir: Path) -> None:
     os.makedirs(ctx.obj["work_dir"], exist_ok=True)
 
 
-@cli.command(help="通过 Windows Edge 登录并导出 session.json")
+@cli.command(help="macOS 导入 Chrome 登录态；Windows/WSL 使用 Edge 登录")
 @click.option(
     "--ps1",
     type=click.Path(exists=True, path_type=Path),
     default=None,
     help="run_edge_login.ps1 路径",
 )
-def login(ps1: Path | None) -> None:
+@click.option('--import-only', is_flag=True, help='macOS 只导入已有 Chrome 会话，不打开登录窗口')
+@click.pass_context
+def login(ctx: click.Context, ps1: Path | None, import_only: bool) -> None:
     if sys.platform == "darwin":
+        env = os.environ.copy()
+        env['AUTOTHU_SESSION'] = str(ctx.obj['session'])
         result = subprocess.run(
-            [sys.executable, str(ROOT / "scripts" / "mac_login.py")], cwd=str(ROOT)
+            [sys.executable, str(ROOT / "scripts" / "mac_login.py"), *(['--import-only'] if import_only else [])], cwd=str(ROOT), env=env
         )
         sys.exit(result.returncode)
 
@@ -109,14 +113,45 @@ def verify(ctx: click.Context) -> None:
         click.echo(f"FAIL: 不存在 {session}", err=True)
         sys.exit(1)
     client = ThuLearnClient.from_session_file(session)
-    if not client.ping():
-        click.echo("FAIL: session 无效或过期，请运行: thu-learn login", err=True)
+    try:
+        sem = client.get_current_semester()
+        courses = client.list_courses(sem)
+    except SessionExpired as exc:
+        click.echo(f'FAIL: {exc}', err=True)
         sys.exit(2)
-    sem = client.semester_id
-    courses = client.list_courses(sem)
+    except Exception as exc:
+        click.echo(f'FAIL: 暂时无法验证（{type(exc).__name__}），原会话已保留。', err=True)
+        sys.exit(1)
+    if os.name == 'posix':
+        client.persist()
     click.echo(f"OK 学期={sem} 课程数={len(courses)}")
     for c in courses:
         click.echo(f"  - {c.get('kcm')} ({c.get('jsm', '')})")
+
+
+@cli.command(help='验证并持久化会话；macOS 可安装每 15 分钟的保活任务')
+@click.option('--install', 'install_service', is_flag=True, help='安装 macOS 保活 LaunchAgent')
+@click.option('--remove', is_flag=True, help='停用保活任务，保留会话')
+@click.option('--status', is_flag=True, help='显示最近验证结果')
+@click.option('--recover-chrome', is_flag=True, help='会话过期时尝试导入 Chrome；不弹登录窗口')
+@click.option('--interval', type=click.IntRange(300, 3600), default=900, show_default=True)
+@click.pass_context
+def keepalive(ctx, install_service, remove, status, recover_chrome, interval):
+    from session_keepalive import install, remove_service, show_status, once
+    if sum((install_service, remove, status)) > 1:
+        raise click.UsageError('--install、--remove、--status 只能选择一个')
+    session = ctx.obj['session']
+    if install_service:
+        install(session, interval, recover_chrome)
+    elif remove:
+        remove_service()
+    elif status:
+        show_status(session)
+    else:
+        result = once(session, recover_chrome)
+        click.echo(result['message'])
+        if result['state'] != 'valid':
+            raise SystemExit(2)
 
 
 @cli.command("courses", help="列出当前学期课程")

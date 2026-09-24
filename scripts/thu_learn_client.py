@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,15 @@ DEFAULT_HEADERS = {
 }
 
 
+class SessionExpired(RuntimeError):
+    """The server no longer accepts the saved login state."""
+
+
+def school_domain(domain: str) -> bool:
+    domain = domain.lstrip('.').lower()
+    return domain == 'tsinghua.edu.cn' or domain.endswith('.tsinghua.edu.cn')
+
+
 def lessons_url(semester_id: str) -> str:
     return (
         BASE
@@ -59,20 +69,24 @@ class ThuLearnClient:
     def __init__(self, session: requests.Session | None = None) -> None:
         self.session = session or requests.Session()
         self.session.headers.update(DEFAULT_HEADERS)
-        self.session.verify = False
+        self.session.verify = True
         self.semester_id: str | None = None
+        self.session_path: Path | None = None
+        self.loaded_bytes: bytes | None = None
 
     @classmethod
     def from_session_file(cls, path: str | Path) -> "ThuLearnClient":
-        path = Path(path)
-        data = json.loads(path.read_text(encoding="utf-8"))
+        path = Path(path).expanduser().resolve()
+        source = path.read_bytes()
+        data = json.loads(source)
         client = cls()
+        client.session_path, client.loaded_bytes = path, source
         xsrf = None
 
         if data.get("all_cookies"):
             for c in data["all_cookies"]:
                 dom = c.get("domain") or ""
-                if "tsinghua.edu.cn" not in dom:
+                if not school_domain(dom):
                     continue
                 client.session.cookies.set(
                     c["name"],
@@ -98,28 +112,36 @@ class ThuLearnClient:
         return client
 
     def _csrf_params(self) -> dict[str, str]:
-        token = self.session.cookies.get("XSRF-TOKEN") or self.session.cookies.get(
-            "xsrf-token"
-        )
+        token = next((c.value for c in self.session.cookies
+                      if c.name.upper() == 'XSRF-TOKEN' and c.domain.lstrip('.') == 'learn.tsinghua.edu.cn'), None)
         if not token:
-            raise KeyError(
+            raise SessionExpired(
                 "缺少 XSRF-TOKEN：请先访问 learn 首页或完成 SSO 登录后再调用 API"
             )
+        self.session.headers['X-XSRF-TOKEN'] = token
         return {"_csrf": token}
+
+    @staticmethod
+    def _json(response):
+        if response.status_code in (401, 403):
+            raise SessionExpired('网络学堂会话失效，请运行 thu-learn login')
+        response.raise_for_status()
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise SessionExpired('网络学堂返回登录页面，请运行 thu-learn login') from exc
 
     def get_json(self, url: str, params: dict | None = None) -> Any:
         p = dict(params or {})
         p.update(self._csrf_params())
         r = self.session.get(url, params=p, timeout=60)
-        r.raise_for_status()
-        return r.json()
+        return self._json(r)
 
     def post_json(self, url: str, data: dict | None = None) -> Any:
         r = self.session.post(
             url, data=data or {}, params=self._csrf_params(), timeout=60
         )
-        r.raise_for_status()
-        return r.json()
+        return self._json(r)
 
     def warmup(self) -> None:
         """获取 JSESSIONID 与 XSRF-TOKEN。"""
@@ -127,14 +149,50 @@ class ThuLearnClient:
 
     def get_current_semester(self) -> str:
         data = self.get_json(SEMESTER_URL)
-        self.semester_id = data["result"]["id"]
+        try:
+            self.semester_id = data['result']['id']
+            if not isinstance(self.semester_id, str) or not self.semester_id:
+                raise ValueError('missing semester')
+        except (KeyError, TypeError, ValueError) as exc:
+            raise SessionExpired('无法验证网络学堂登录态，请运行 thu-learn login') from exc
         return self.semester_id
 
     def list_courses(self, semester_id: str | None = None) -> list[dict]:
         sid = semester_id or self.semester_id or self.get_current_semester()
         # thulearn2018 使用 POST（非 GET）
         data = self.post_json(lessons_url(sid), data={})
-        return data.get("resultList") or []
+        if not isinstance(data, dict) or not isinstance(data.get('resultList'), list):
+            raise SessionExpired('无法读取课程列表，请运行 thu-learn login')
+        return data['resultList']
+
+    def persist(self) -> bool:
+        """Save rotated cookies only if another process has not refreshed the file."""
+        if self.session_path is None or self.loaded_bytes is None:
+            return False
+        # macOS/Linux callers share this lock; replacement prevents partial JSON reads.
+        import fcntl
+        path = self.session_path
+        with path.with_suffix(path.suffix + '.lock').open('a') as guard:
+            fcntl.flock(guard, fcntl.LOCK_EX)
+            if path.read_bytes() != self.loaded_bytes:
+                return False
+            data = json.loads(self.loaded_bytes)
+            data.pop('cookies', None)
+            data['all_cookies'] = [{'name': c.name, 'value': c.value, 'domain': c.domain,
+                                    'path': c.path or '/'} for c in self.session.cookies if school_domain(c.domain)]
+            payload = (json.dumps(data, ensure_ascii=False, indent=2) + '\n').encode()
+            fd, tmp = tempfile.mkstemp(prefix='.session-', dir=path.parent)
+            try:
+                with os.fdopen(fd, 'wb') as f:
+                    f.write(payload)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp, path)
+                self.loaded_bytes = payload
+            finally:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+        return True
 
     def ping(self) -> bool:
         try:
